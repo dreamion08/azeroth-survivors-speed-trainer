@@ -8,6 +8,7 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 
 internal static class Native
@@ -235,6 +236,11 @@ internal sealed class TrainerForm : Form
     private readonly Label connectionLabel = new Label();
     private readonly GameButton miniButton = new GameButton();
     private readonly GameButton browseButton = new GameButton();
+    private readonly GameButton updateButton = new GameButton();
+    private readonly System.Windows.Forms.Timer updateTimer = new System.Windows.Forms.Timer();
+    private readonly bool automaticUpdates;
+    private bool updateBusy,initialUpdateCheck;
+    private PreparedUpdate pendingUpdate;
     private readonly ToolTip statusDetails = new ToolTip();
     private readonly int[] speeds = {100,150,200,300,500};
     private readonly bool[] registered = new bool[5];
@@ -262,12 +268,14 @@ internal sealed class TrainerForm : Form
     private string selectedGamePath;
     private bool explicitGameSelection;
 
-    internal TrainerForm() : this(true) { }
-    internal TrainerForm(bool enableWheelInput)
+    internal TrainerForm() : this(true,true) { }
+    internal TrainerForm(bool enableWheelInput) : this(enableWheelInput,false) { }
+    internal TrainerForm(bool enableWheelInput,bool enableUpdates)
     {
         captureWheel=enableWheelInput;
+        automaticUpdates=enableUpdates;
         wheelInput=new WheelInput(OnWheelDelta);
-        Text="Azeroth Survivors | Speed Trainer 1.0";
+        Text="Azeroth Survivors | Speed Trainer "+AppUpdates.CurrentVersion.ToString(2);
         ClientSize=new Size(740,526);
         FormBorderStyle=FormBorderStyle.None;
         MaximizeBox=false;
@@ -285,7 +293,7 @@ internal sealed class TrainerForm : Form
         title.ForeColor=GameTheme.Gold;
         title.TextAlign=ContentAlignment.MiddleCenter;
         WireDragSurface(title);
-        var subtitle=MakeLabel("S P E E D   T R A I N E R   ·   1.0",24,101,692,24);
+        var subtitle=MakeLabel("S P E E D   T R A I N E R   ·   "+AppUpdates.CurrentVersion.ToString(2),24,101,692,24);
         subtitle.Font=new Font("Segoe UI",9);
         subtitle.TextAlign=ContentAlignment.MiddleCenter;
         subtitle.ForeColor=GameTheme.Muted;
@@ -297,6 +305,13 @@ internal sealed class TrainerForm : Form
         browseButton.Click+=BrowseGame;
         statusDetails.SetToolTip(browseButton,"Choose AzerothSurvivors.exe, or let Attach detect the running game.");
         Controls.Add(browseButton);
+        updateButton.Text="Check updates";
+        updateButton.DesignSize=new Size(166,26);
+        updateButton.SetBounds(164,15,166,26);
+        updateButton.AccessibleName="Check for trainer updates";
+        updateButton.Click+=delegate { if(pendingUpdate!=null) Close(); else CheckForUpdates(); };
+        statusDetails.SetToolTip(updateButton,"Checks GitHub for a newer stable release. Downloads happen in the background.");
+        Controls.Add(updateButton);
         miniButton.Text="Mini mode";
         miniButton.DesignSize=new Size(98,26);
         miniButton.SetBounds(546,15,98,26);
@@ -376,6 +391,68 @@ internal sealed class TrainerForm : Form
         timer.Tick+=Tick;
         timer.Start();
         FormClosing+=OnClosing;
+        updateTimer.Interval=6*60*60*1000;
+        updateTimer.Tick+=delegate { CheckForUpdates(); };
+        if(automaticUpdates) updateTimer.Start();
+    }
+
+    protected override void OnShown(EventArgs e)
+    {
+        base.OnShown(e);
+        if(automaticUpdates && !initialUpdateCheck)
+        {
+            initialUpdateCheck=true;
+            CheckForUpdates();
+        }
+    }
+    private void CheckForUpdates()
+    {
+        if(!automaticUpdates || updateBusy || pendingUpdate!=null || closing) return;
+        updateBusy=true;
+        updateButton.Text="Checking…";
+        updateButton.Enabled=false;
+        string staging=AppUpdates.StagingRoot(AppDomain.CurrentDomain.BaseDirectory);
+        TaskScheduler ui=TaskScheduler.FromCurrentSynchronizationContext();
+        Task.Factory.StartNew(delegate {
+            return UpdateClient.CheckAndDownload(AppUpdates.CurrentVersion,staging,ReportUpdateStatus);
+        }).ContinueWith(task => {
+            if(closing || IsDisposed) return;
+            updateBusy=false;
+            updateButton.Enabled=true;
+            if(task.IsFaulted)
+            {
+                updateButton.Text="Check updates";
+                statusDetails.SetToolTip(updateButton,"Update check failed; your current version still works. "+task.Exception.GetBaseException().Message);
+            }
+            else if(task.IsCanceled)
+            {
+                updateButton.Text="Check updates";
+            }
+            else if(task.Result==null)
+            {
+                updateButton.Text="Up to date";
+                statusDetails.SetToolTip(updateButton,"Version "+AppUpdates.CurrentVersion.ToString(3)+" is up to date. Click to check again.");
+            }
+            else
+            {
+                pendingUpdate=task.Result;
+                updateButton.Text="Install update";
+                updateButton.Primary=true;
+                updateButton.Invalidate();
+                statusDetails.SetToolTip(updateButton,"Version "+pendingUpdate.Version+" is ready. Close the trainer and game to install automatically, or click to close the trainer now.");
+            }
+        },System.Threading.CancellationToken.None,TaskContinuationOptions.None,ui);
+    }
+    private void ReportUpdateStatus(string message)
+    {
+        if(closing || IsDisposed || !IsHandleCreated) return;
+        try
+        {
+            BeginInvoke(new Action(delegate {
+                if(!closing && !IsDisposed) statusDetails.SetToolTip(updateButton,message);
+            }));
+        }
+        catch(InvalidOperationException) { }
     }
 
     protected override void OnHandleCreated(EventArgs e)
@@ -428,7 +505,7 @@ internal sealed class TrainerForm : Form
     }
     protected override void Dispose(bool disposing)
     {
-        if(disposing) { if(wheelInput!=null) wheelInput.Dispose(); statusDetails.Dispose(); timer.Dispose(); }
+        if(disposing) { if(wheelInput!=null) wheelInput.Dispose(); updateTimer.Dispose(); statusDetails.Dispose(); timer.Dispose(); }
         base.Dispose(disposing);
     }
 
@@ -822,7 +899,17 @@ internal sealed class TrainerForm : Form
     {
         closing=true;
         timer.Stop();
+        updateTimer.Stop();
         Disconnect();
+        if(pendingUpdate!=null)
+        {
+            try { AppUpdates.Schedule(pendingUpdate,AppDomain.CurrentDomain.BaseDirectory); }
+            catch(Exception e)
+            {
+                // The current installation is untouched if scheduling fails.
+                MessageBox.Show(this,"The update could not be scheduled. Your current copy is unchanged.\n"+e.Message,"Trainer update",MessageBoxButtons.OK,MessageBoxIcon.Information);
+            }
+        }
     }
 }
 

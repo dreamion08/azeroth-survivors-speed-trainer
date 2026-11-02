@@ -1,15 +1,25 @@
-# v1.0.0
+# v1.1.0
 
-First public portable release of Azeroth Survivors Speed Trainer.
+Automatic updates for Azeroth Survivors Speed Trainer.
 
-- Run from any folder with the trainer executable and DLL kept together.
-- Detect a running Azeroth Survivors installation, or select one with Game files….
-- Use 1x, 1.5x, 2x, 3x and 5x presets with Ctrl+F6 through Ctrl+F10, or Shift plus the mouse wheel while the game or trainer has focus.
-- Switch to a small, draggable, half-transparent window that stays on top. Double-click it or press Esc to return to the full interface.
-- Match the game's visual style with dark panels, gold details and burgundy controls.
-- Check game identity and timing support before attachment instead of requiring one fixed executable fingerprint.
-- Request normal speed on close, with a heartbeat watchdog that restores 1x if the trainer stops responding.
+- Check for the latest stable release at startup, every six hours while the trainer is open, or with **Check updates**.
+- Download updates in the background while you play, with a published SHA-256 checksum check before installation. No GitHub login or token is required.
+- Prepare the update and wait quietly until the trainer and all Azeroth Survivors processes have closed. The updater never forces an app or game to close.
+- Use **Install update** once a download is ready, or close the trainer normally to queue installation. The trainer restarts after the update is applied.
+- Back up replaced files and attempt rollback if installation fails. Offline checks and failed downloads leave the current version usable, with status shown without a blocking popup.
 
-Download **Azeroth-Survivors-Speed-Trainer-v1.0.0-win-x64.zip**, extract all files and run the trainer alongside Azeroth Survivors. Requires 64-bit Windows; .NET Framework 4.8 is recommended.
+The five speed presets, Ctrl+F6 through Ctrl+F10, Shift plus mouse-wheel control, game selection and floating mini mode remain available.
 
-The release is unsigned and uses a conventional timing DLL loaded only into the selected game. Anti-cheat coexistence, including Aion 2, and co-op/network play are unverified. Compatibility checks do not guarantee support for every future game update.
+## Install or upgrade
+
+Download **Azeroth-Survivors-Speed-Trainer-v1.1.0-win-x64.zip** and extract all files to a writable folder. Keep these three files together:
+
+- `Azeroth-Speed.exe`
+- `AzerothSpeedHook.dll`
+- `Azeroth-Speed-Updater.exe`
+
+**Version 1.0.0 requires this one manual upgrade:** it does not include an updater and cannot install v1.1.0 automatically. Close the old trainer and Azeroth Survivors before replacing the old files. Future stable releases can be downloaded and queued automatically by v1.1.0.
+
+Requires 64-bit Windows; .NET Framework 4.8 is recommended. Updates replace trainer files only and do not modify the game or its saves.
+
+The release is unsigned. SHA-256 checks provide download integrity, not publisher signing. The trainer uses a conventional timing DLL loaded into the selected game; anti-cheat coexistence, including Aion 2, and co-op/network play remain unverified. Compatibility checks do not guarantee support for every future game update.
