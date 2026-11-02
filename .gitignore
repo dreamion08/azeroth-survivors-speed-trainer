@@ -1,0 +1,19 @@
+# Generated build output
+bin/
+obj/
+dist/
+build/
+source/build/
+
+# Local installation selection
+game-path.txt
+
+# Compiler and IDE files
+*.obj
+*.pdb
+*.ilk
+*.exp
+*.lib
+.vs/
+*.user
+*.suo
